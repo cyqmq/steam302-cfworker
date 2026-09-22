@@ -52,6 +52,15 @@ const STEAM_HOSTS = [
   "cdn.cloudflare.steamstatic.com",
 ];
 
+const MODIO_HOSTS = [
+  "mod.io",
+  "www.mod.io",
+  "stats.mod.io",
+  "api.mod.io",
+  "api-v3.mod.io",
+  "forums.mod.io",
+];
+
 export function matchRoute(routes, hostRaw) {
   const host = String(hostRaw).toLowerCase().replace(/:\d+$/, "");
   let best = null;
@@ -91,6 +100,7 @@ export const DEFAULT_MANIFEST = {
       hosts: GITHUB_HOSTS,
       ua: null,
       upstreams: [],
+      cache: { static_ms: 7 * 24 * 3600 * 1000 },
     },
     {
       id: "steam",
@@ -100,6 +110,18 @@ export const DEFAULT_MANIFEST = {
       hosts: STEAM_HOSTS,
       ua: UA_GOOGLEBOT,
       upstreams: [],
+      stealth: true,
+      cache: { static_ms: 24 * 3600 * 1000 },
+    },
+    {
+      id: "modio",
+      group: "modio",
+      name: "mod.io 模组站",
+      mode: "same-host",
+      hosts: MODIO_HOSTS,
+      ua: null,
+      upstreams: [],
+      cache: { static_ms: 7 * 24 * 3600 * 1000 },
     },
   ],
 };

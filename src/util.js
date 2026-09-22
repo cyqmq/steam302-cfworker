@@ -13,6 +13,18 @@ export function isAssetHost(host) {
   return ASSET_HOSTS.has(String(host).toLowerCase());
 }
 
+const HEAVY_HOSTS = new Set([
+  ...ASSET_HOSTS,
+  "avatars.githubusercontent.com",
+  "cdn.steamstatic.com",
+  "cdn.cloudflare.steamstatic.com",
+  "shared.cloudflare.steamstatic.com",
+]);
+
+export function isHeavyHost(host) {
+  return HEAVY_HOSTS.has(String(host).toLowerCase());
+}
+
 export function hash(s) {
   let x = 0;
   for (let i = 0; i < s.length; i++) x = (x * 31 + s.charCodeAt(i)) >>> 0;

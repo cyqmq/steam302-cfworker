@@ -2,6 +2,7 @@ import { matchRoute } from "./router.js";
 import { loadConfig } from "./config.js";
 import { proxyRequest } from "./proxy.js";
 import { scheduledCheck } from "./health.js";
+import { cacheDelete } from "./cache.js";
 
 const PREFLIGHT = new Response(null, {
   status: 204,
@@ -34,7 +35,7 @@ function passAcl(cfg, env, request) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const cfg = await loadConfig(env);
     const url = new URL(request.url);
     if (url.pathname === "/__health") {
@@ -49,6 +50,21 @@ export default {
     const host = (request.headers.get("host") || url.hostname)
       .toLowerCase()
       .replace(/:\d+$/, "");
+    if (url.pathname === "/__flush-cache") {
+      const target = url.searchParams.get("url");
+      if (!target) {
+        return new Response("need ?url=<full origin url>", {
+          status: 400,
+          headers: { "content-type": "text/plain; charset=utf-8" },
+        });
+      }
+      let deleted = false;
+      try { deleted = await cacheDelete(target); } catch (_) {}
+      return new Response(
+        JSON.stringify({ deleted }),
+        { headers: { "content-type": "application/json" } }
+      );
+    }
     const route = matchRoute(cfg.routes, host);
     if (!route) {
       return new Response("no route for host: " + host, {
@@ -56,7 +72,7 @@ export default {
         headers: { "content-type": "text/plain; charset=utf-8" },
       });
     }
-    return proxyRequest(request, cfg, route, host, env);
+    return proxyRequest(request, cfg, route, host, env, ctx);
   },
 
   async scheduled(_controller, env) {

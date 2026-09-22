@@ -23,7 +23,8 @@
         "*.github.io"
       ],
       "ua": null,
-      "upstreams": []
+      "upstreams": [],
+      "cache": { "static_ms": 604800000 }
     },
     {
       "id": "steam",
@@ -37,7 +38,26 @@
         "cdn.cloudflare.steamstatic.com"
       ],
       "ua": "Googlebot/2.1 (+http://www.google.com/bot.html)",
-      "upstreams": []
+      "upstreams": [],
+      "stealth": true,
+      "cache": { "static_ms": 86400000 }
+    },
+    {
+      "id": "modio",
+      "group": "modio",
+      "name": "mod.io 模组站",
+      "mode": "same-host",
+      "hosts": [
+        "mod.io",
+        "www.mod.io",
+        "stats.mod.io",
+        "api.mod.io",
+        "api-v3.mod.io",
+        "forums.mod.io"
+      ],
+      "ua": null,
+      "upstreams": [],
+      "cache": { "static_ms": 604800000 }
     }
   ]
 }
