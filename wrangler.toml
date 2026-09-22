@@ -20,6 +20,11 @@ kv_namespaces = [
 [triggers]
 crons = ["*/5 * * * *"]
 
+# 可选：Analytics Engine 埋点（先到 Cloudflare 面板创建好同名 dataset）
+# analytics_engine_datasets = [
+#   { binding = "ANALYTICS", dataset = "steam302_cfworker" }
+# ]
+
 # ===== 可选变量 =====
 # MANIFEST：内置路由表的 JSON 兜底（KV 存在则 KV 优先，适合"随时增减域名"）
 #   wrangler secret put MANIFEST（< 8KB 场景）或放这里

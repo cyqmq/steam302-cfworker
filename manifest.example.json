@@ -24,7 +24,13 @@
       ],
       "ua": null,
       "upstreams": [],
-      "cache": { "static_ms": 604800000 }
+      "cache": {
+        "static_ms": 604800000,
+        "rules": [
+          { "match": "/releases/download", "ttl_ms": 3600000 },
+          { "match": "/archive/", "ttl_ms": 3600000 }
+        ]
+      }
     },
     {
       "id": "steam",
@@ -40,6 +46,7 @@
       "ua": "Googlebot/2.1 (+http://www.google.com/bot.html)",
       "upstreams": [],
       "stealth": true,
+      "sni": "steamcommunity.com",
       "cache": { "static_ms": 86400000 }
     },
     {

@@ -10,6 +10,7 @@ export async function stealthFetch(target, init, timeoutMs = 15000) {
   const method = (init && init.method) || "GET";
   const headers = (init && init.headers) || new Headers();
   const body = (init && init.body) || undefined;
+  const sni = (init && init.sni) || url.hostname;
   const useTls = url.protocol === "https:";
   const port = url.port || (useTls ? 443 : 80);
 
@@ -28,7 +29,7 @@ export async function stealthFetch(target, init, timeoutMs = 15000) {
     try {
       cxn = socket.startTls({
         ALPNProtocols: ["http/1.1"],
-        serverName: url.hostname,
+        serverName: sni,
       });
     } catch (e) {
       try { socket.close(); } catch (_) {}

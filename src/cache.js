@@ -10,9 +10,23 @@ export function cachePolicy(route, url, method, inHeaders) {
   if (inHeaders.has("cookie") || inHeaders.has("authorization") || inHeaders.has("range")) return null;
   const r = route.cache || {};
   const p = (url.pathname || "").toLowerCase();
+  if (Array.isArray(r.rules)) {
+    for (const rule of r.rules) {
+      if (!rule || !rule.match || !rule.ttl_ms) continue;
+      const matched =
+        rule.regex
+          ? new RegExp(rule.match).test(p)
+          : p.includes(String(rule.match).toLowerCase());
+      if (matched) {
+        const secs = Math.max(1, Math.round(rule.ttl_ms / 1000));
+        return { ttlMs: rule.ttl_ms, ctrl: "public, max-age=" + secs };
+      }
+    }
+  }
   if (STATIC_RE.test(p)) {
-    const secs = Math.max(1, Math.round((r.static_ms ?? 7 * 24 * 3600 * 1000) / 1000));
-    return { ttlMs: r.static_ms ?? 7 * 24 * 3600 * 1000, ctrl: "public, max-age=" + secs + ", immutable" };
+    const ms = r.static_ms ?? 7 * 24 * 3600 * 1000;
+    const secs = Math.max(1, Math.round(ms / 1000));
+    return { ttlMs: ms, ctrl: "public, max-age=" + secs + ", immutable" };
   }
   if (r.micro_ms && (/\/api\//.test(p) || p.startsWith("/graphql-"))) {
     const secs = Math.max(1, Math.round(r.micro_ms / 1000));

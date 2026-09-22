@@ -15,15 +15,15 @@ const REDIRECT_TO_GET = (s) => s >= 300 && s <= 303;
 
 function candidates(route, host) {
   const out = [];
-  const push = (u, hostOverride) => {
+  const push = (u, hostOverride, sni) => {
     if (!u) return;
     const url = String(u).replace(/\/+$/, "");
     if (out.some((o) => o.url === url)) return;
-    out.push({ url, host: hostOverride });
+    out.push({ url, host: hostOverride, sni: sni || hostOverride });
   };
-  if (route.mode === "same-host") push("https://" + host, host);
-  else push(route.target, host);
-  for (const u of route.upstreams || []) push(u, host);
+  if (route.mode === "same-host") push("https://" + host, host, route.sni);
+  else push(route.target, host, route.sni);
+  for (const u of route.upstreams || []) push(u, host, route.sni);
   return out;
 }
 
@@ -50,7 +50,7 @@ async function nativeFetch(req, cfg) {
   }
 }
 
-async function attemptFetch(request, target, route, origHost, cfg, stealth) {
+async function attemptFetch(request, target, route, origHost, cfg, stealth, sni) {
   const isBodyless = request.method === "GET" || request.method === "HEAD";
   const body = isBodyless ? undefined : await request.clone().arrayBuffer();
   const req = new Request(target, {
@@ -67,6 +67,7 @@ async function attemptFetch(request, target, route, origHost, cfg, stealth) {
           method: req.method,
           headers: req.headers,
           body,
+          sni,
         });
       } catch (_) {}
     }
@@ -140,7 +141,8 @@ async function redirectChain(res, request, cfg, route, base, env, depth) {
         route,
         locUrl.hostname,
         cfg,
-        route.stealth && !isHeavyHost(locUrl.hostname)
+        route.stealth && !isHeavyHost(locUrl.hostname),
+        route.sni || locUrl.hostname
       );
       if (r2.status >= 500 || r2.status === 429) {
         await failAndReport(env, route, up, cfg, r2.status);
@@ -155,18 +157,39 @@ async function redirectChain(res, request, cfg, route, base, env, depth) {
   return finalize(res);
 }
 
+function emitAnalytics(env, ctx, data) {
+  if (!env || !env.ANALYTICS) return;
+  try {
+    const ev = env.ANALYTICS.writeDataEvent;
+    const task = typeof ev === "function"
+      ? ev({ indexName: "request", data })
+      : null;
+    if (task && ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(task);
+  } catch (_) {}
+}
+
 export async function proxyRequest(request, cfg, route, host, env, ctx) {
+  const t0 = Date.now();
   const reqUrl = new URL(request.url);
   const tail = reqUrl.pathname + reqUrl.search;
   const cands = candidates(route, host);
-  const list = cands.map((c) => ({ url: c.url + tail, host: c.host }));
+  const list = cands.map((c) => ({ url: c.url + tail, host: c.host, sni: c.sni }));
+
+  const result = { status: 502, upstream: "", ok: false };
 
   const lookupUrl = list[0] && list[0].url;
   if (lookupUrl) {
     const hitPolicy = cachePolicy(route, new URL(lookupUrl), request.method, request.headers);
     if (hitPolicy) {
       const hit = await cacheLookup(lookupUrl);
-      if (hit) return finalize(hit);
+      if (hit) {
+        result.status = hit.status;
+        result.upstream = "cache";
+        result.ok = true;
+        const out = finalize(hit);
+        emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
+        return out;
+      }
     }
   }
 
@@ -188,7 +211,8 @@ export async function proxyRequest(request, cfg, route, host, env, ctx) {
     const stealth =
       !!route.stealth && !isHeavyHost(new URL(up.url).hostname);
     try {
-      const res = await attemptFetch(request, up.url, route, up.host, cfg, stealth);
+      const res = await attemptFetch(request, up.url, route, up.host, cfg, stealth, up.sni);
+      result.upstream = up.url;
       if (res.status >= 500 || res.status === 429) {
         last = await failAndReport(env, route, up.url, cfg, res.status);
         continue;
@@ -197,10 +221,16 @@ export async function proxyRequest(request, cfg, route, host, env, ctx) {
         const policy = cachePolicy(route, new URL(up.url), request.method, request.headers);
         if (policy) await cacheStore(up.url, res.clone(), policy, ctx);
       }
-      return redirectChain(res, request, cfg, route, up.url, env, 0);
+      result.status = res.status;
+      result.ok = res.status < 400;
+      const out = redirectChain(res, request, cfg, route, up.url, env, 0);
+      emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
+      return out;
     } catch (_) {
       last = await failAndReport(env, route, up.url, cfg, 502);
     }
   }
-  return err(last >= 500 ? last : 502, "all upstreams unreachable");
+  result.status = last >= 500 ? last : 502;
+  emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
+  return err(result.status, "all upstreams unreachable");
 }

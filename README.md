@@ -158,9 +158,30 @@ Cloudflare Workers 向源站发起 fetch 时会自动注入 `cf-worker: <域名>
 OpenID 端点在检测到该头时直接返回 403，导致登录失败。
 
 `stealth: true` 的路由改用 `cloudflare:sockets` 底层 TCP + TLS 直连（HTTP/1.1，
-`Connection: close`，单连接请求），**不经过自动注入头**，从而绕过 Steam 的封锁。
-实现失败时自动回退到原生 fetch，不影响可用性。大文件/下载类域名（github-releases、
-steamstatic CDN 等 `heavy host`）保持在原生 fetch 链路，避免整包缓冲内存开销。
+`Connection: close`），**不经过自动注入头**，从而绕过 Steam 的封锁。实现失败时自动回退
+到原生 fetch，不影响可用性。大文件/下载类域名（github-releases、steamstatic CDN 等
+`heavy host`）保持在原生 fetch 链路，避免整包缓冲内存开销。
+
+#### SNI 显式控制（`sni` 字段）
+
+TLS 握手由 `src/stealth.js` 手动完成（`socket.startTls()`），`serverName` 可完全自定义：
+
+- 默认 = 目标 URL 的 hostname（`steamcommunity.com` 等）
+- 通过路由级 `"sni": "xxx.example.com"` 覆盖，可以对**任意 IP/域名**连接时伪装成指定 SNI
+
+一个典型应用：`connect()` 可以连接裸 IP，而 SNI 仍填真实域名——即"连 IP、报域名"，
+在原生 fetch 被 Cloudflare 禁止访问裸 IP 的情况下，这是直连 IP 池唯一可行的通道。
+
+> ⚠️ SNI 能否稳定通过 Steam 的 Akamai 边缘校验（证书链域名必须匹配 SNI 且源站要接受），
+> 需部署后实网验证。代码已把控制权完全交给你，可搭配 `upstreams` 里的 IP 试验。
+
+#### Worker 底层限制（不可绕过，仅提示）
+
+| 限制 | 说明 |
+|------|------|
+| 出站 IP 前缀 | Workers 出站 TCP 来源不属于 Cloudflare 公开 IP 段，源站看到的不是边缘 IP，个别站点的风控仍可能命中 |
+| `startTls()` 单次 | 同一 socket 只能调用一次；本项目每次 `stealthFetch` 都新建连接、恰好调用一次，无连接复用 |
+| 免费额度 | 10 万请求/天、每次 10ms CPU、请求体 100MB（用 Cache API / IP 池时注意 CPU 与体积预算） |
 
 ### 边缘缓存
 
@@ -170,9 +191,22 @@ steamstatic CDN 等 `heavy host`）保持在原生 fetch 链路，避免整包�
 |------|------|------|
 | `static_ms` | GitHub/mod.io 7 天，Steam 1 天 | 命中后缀 `.jpg .png .gif .webp .svg .ico .css .js .mjs .woff .woff2 .ttf .eot` 等静态资源的强缓存 TTL |
 | `micro_ms` | 未开启 | 对 `/api/` 或 `/graphql-` 路径的微缓存（如 10s），提升页面导航体验 |
+| `rules` | 见内置 github 路由 | 按路径子串/正则的 TTL 规则，**优先于**后缀默认值。示例：`{ "match": "/releases/download", "ttl_ms": 3600000 }`；`"regex": true` 时按正则匹配 |
+
+内置 GitHub 路由已含示例规则：Release 下载、`/archive/` 按 1h TTL（大体积受 25MB 门槛
+自动豁免，不占缓存）。
 
 缓存只在 `GET`、无 `Cookie`/`Authorization`/`Range` 请求头、响应无 `set-cookie`/`vary`/
 `no-store`、且体积 < 25MB 时生效。`/__flush-cache?url=<origin url>`（需过 ACL）可主动失效。
+
+### 可观测性（Analytics Engine，可选）
+
+`proxy.js` 对每次请求写入一条事件（route / host / status / ok / upstream / ms）。启用：
+
+1. Cloudflare 面板创建 Analytics Engine dataset（如 `steam302_cfworker`）
+2. 取消 `wrangler.toml` 中 `analytics_engine_datasets` 注释并部署
+
+之后可在 Analytics 面板按状态码、上游耗时分布筛选，为缓存命中率与 IP 池调优提供数据。
 
 ### wrangler.toml 环境变量（可选）
 

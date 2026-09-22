@@ -100,7 +100,13 @@ export const DEFAULT_MANIFEST = {
       hosts: GITHUB_HOSTS,
       ua: null,
       upstreams: [],
-      cache: { static_ms: 7 * 24 * 3600 * 1000 },
+      cache: {
+        static_ms: 7 * 24 * 3600 * 1000,
+        rules: [
+          { match: "/releases/download", regex: false, ttl_ms: 3600 * 1000 },
+          { match: "/archive/", regex: false, ttl_ms: 3600 * 1000 },
+        ],
+      },
     },
     {
       id: "steam",
