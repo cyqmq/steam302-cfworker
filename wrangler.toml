@@ -1,0 +1,31 @@
+name = "steam302-cfworker"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# 生产环境建议用自定义域名（workers.dev 在大陆被墙）。
+# 打通后再执行：
+#   wrangler routes create acc.example.com  (或粘贴到 Cloudflare 面板：Worker -> Routes)
+routes = [
+  # { pattern = "acc.example.com", zone_name = "example.com", custom_domain = true },
+]
+
+# 注意：YAML 布局，务必补成你的真实 KV 命名空间 id：
+#   wrangler kv namespace create ROUTES
+#   wrangler kv namespace create HEALTH_KV
+kv_namespaces = [
+  { binding = "ROUTES", id = "REPLACE_WITH_ROUTES_KV_ID" },
+  { binding = "HEALTH_KV", id = "REPLACE_WITH_HEALTH_KV_ID" },
+]
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# ===== 可选变量 =====
+# MANIFEST：内置路由表的 JSON 兜底（KV 存在则 KV 优先，适合"随时增减域名"）
+#   wrangler secret put MANIFEST（< 8KB 场景）或放这里
+# ACCESS_TOKEN / ALLOW_IPS：（可选）访问控制，防止泄露额度；ALLOW_IPS 逗号分隔
+# FAILOVER：{"timeout_ms":6000,"max_fails":2,"cooldown_s":45} 覆盖
+#
+# [vars]
+# MANIFEST = '{"version":1,"failover":{"timeout_ms":6000,"max_fails":2,"cooldown_s":45},"routes":[...]}'
+# ALLOW_IPS = "1.2.3.4,5.6.7.8"

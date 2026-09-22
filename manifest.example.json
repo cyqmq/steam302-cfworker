@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "failover": {
+    "timeout_ms": 6000,
+    "max_fails": 2,
+    "cooldown_s": 45
+  },
+  "routes": [
+    {
+      "id": "github",
+      "group": "github",
+      "name": "GitHub 加速",
+      "mode": "same-host",
+      "hosts": [
+        "github.com",
+        "www.github.com",
+        "gist.github.com",
+        "api.github.com",
+        "raw.githubusercontent.com",
+        "avatars.githubusercontent.com",
+        "github.githubassets.com",
+        "codeload.github.com",
+        "*.github.io"
+      ],
+      "ua": null,
+      "upstreams": []
+    },
+    {
+      "id": "steam",
+      "group": "steam",
+      "name": "Steam 社区/商店",
+      "mode": "same-host",
+      "hosts": [
+        "steamcommunity.com",
+        "www.steamcommunity.com",
+        "store.steampowered.com",
+        "cdn.cloudflare.steamstatic.com"
+      ],
+      "ua": "Googlebot/2.1 (+http://www.google.com/bot.html)",
+      "upstreams": []
+    }
+  ]
+}
