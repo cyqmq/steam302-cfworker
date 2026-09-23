@@ -40,9 +40,9 @@ export async function readHealth(env, id, upstream) {
   const k = id + "|" + upstream;
   const v = LOCAL.get(k);
   if (v && Date.now() < v.until) return v;
-  if (env.HEALTH_KV) {
+  if (env.KV) {
     try {
-      const kv = await env.HEALTH_KV.get(kvKey(id, upstream), "json");
+      const kv = await env.KV.get(kvKey(id, upstream), "json");
       if (kv) {
         LOCAL.set(k, kv);
         return kv;
@@ -56,9 +56,9 @@ export async function markFail(env, id, upstream, maxFails, cooldownMs) {
   const k = id + "|" + upstream;
   let v = LOCAL.get(k);
   if (!v) {
-    if (env.HEALTH_KV) {
+    if (env.KV) {
       try {
-        v = await env.HEALTH_KV.get(kvKey(id, upstream), "json");
+        v = await env.KV.get(kvKey(id, upstream), "json");
       } catch (_) {}
     }
     v = v || { fails: 0, until: 0 };
@@ -67,9 +67,9 @@ export async function markFail(env, id, upstream, maxFails, cooldownMs) {
   if (v.fails >= maxFails) {
     v.until = Date.now() + cooldownMs;
     v.fails = 0;
-    if (env.HEALTH_KV) {
+    if (env.KV) {
       try {
-        await env.HEALTH_KV.put(kvKey(id, upstream), JSON.stringify(v));
+        await env.KV.put(kvKey(id, upstream), JSON.stringify(v));
       } catch (_) {}
     }
   }
@@ -84,9 +84,9 @@ export async function getSnapshot(env) {
   const now = Date.now();
   if (snapshot.ts && now - snapshot.ts < 30_000) return snapshot.value;
   let value = null;
-  if (env.HEALTH_KV) {
+  if (env.KV) {
     try {
-      value = await env.HEALTH_KV.get("snapshot", "json");
+      value = await env.KV.get("snapshot", "json");
     } catch (_) {}
   }
   snapshot = { ts: now, value };
@@ -179,9 +179,9 @@ export async function scheduledCheck(env, cfg) {
   }
   const value = { ts: Date.now(), failed };
   snapshot = { ts: value.ts, value };
-  if (env.HEALTH_KV) {
+  if (env.KV) {
     try {
-      await env.HEALTH_KV.put("snapshot", JSON.stringify(value));
+      await env.KV.put("snapshot", JSON.stringify(value));
     } catch (_) {}
   }
   return Object.keys(failed).length;

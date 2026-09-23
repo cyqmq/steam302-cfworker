@@ -21,9 +21,9 @@ export async function loadConfig(env) {
   if (local.cfg && Date.now() - local.ts < 30_000) return local.cfg;
   let cfg = structuredClone(DEFAULT_MANIFEST);
   let text = null;
-  if (env.ROUTES) {
+  if (env.KV) {
     try {
-      text = await env.ROUTES.get("manifest");
+      text = await env.KV.get("manifest");
     } catch (_) {}
   }
   if (!text && env.MANIFEST) {

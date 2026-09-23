@@ -94,25 +94,23 @@ Fork 本仓库到自己的 GitHub，clone 到本地后按「方式 C/方式 D」
 
 ### 方式 B：一键按钮（Pages 精简版）
 
-上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署。仓库 `wrangler.toml` **不声明
-`kv_namespaces`，按钮不会自动创建 KV**，因此：
+上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署。`wrangler.toml` 声明了**一个** `KV`
+binding（按钮向导里选"自动创建"即可），因此：
 
-- ⚠️ Pages 不支持 `scheduled`（健康检查巡检/缓存预热 cron 不触发）
-- 默认以内置路由表运行（GitHub/Steam/mod.io），不需要 KV
-- 若要自定义路由表 / 健康状态持久化：部署后到 **Pages → Settings → Bindings** 手动添加
-  `ROUTES`、`HEALTH_KV` 两个 KV 绑定（命名空间先到 Workers & Pages → KV 创建，见方式 D）
+- ⚠️ Pages 不支持 `scheduled`（健康检查巡检 cron 不触发）
+- KV 只存 manifest 与健康状态，都是可选增强：不绑定照样以内置路由表运行（GitHub/Steam/mod.io）
+- 按钮每次运行按项目名自动建一个同名 KV；若账号里已有同名命名空间，在向导下拉里**选它复用**即可
 
 适合快速试水；要完整能力（cron/健康检查/stealth 全量）请用方式 A/C/D 部署到 Workers。
 
 ### 方式 C：本地一键脚本
 
-**先手动创建并绑定 KV**（见「方式 D」步骤 1，脚本不会自动创建），然后：
+**先创建 KV**（见「方式 D」步骤 1，脚本不会自动创建），然后：
 
 ```bash
 export CLOUDFLARE_API_TOKEN=xxx
 export CLOUDFLARE_ACCOUNT_ID=xxx
-# 可选：export KV_ROUTES_ID=<ROUTES 命名空间 id>   （wrangler.toml 已填好则不用）
-# 可选：export KV_HEALTH_KV_ID=<HEALTH_KV 命名空间 id>
+# 可选：export KV_ID=<KV 命名空间 id>   （wrangler.toml 已填好则不用）
 # 可选：export MANIFEST='{"version":1,"routes":[...]}'
 # 可选：export CF_DOMAIN=acc.example.com
 bash scripts/deploy.sh
@@ -120,33 +118,29 @@ bash scripts/deploy.sh
 
 只做：注入 KV id（若给了）→ 可选 MANIFEST / 自定义域 → `wrangler deploy`。
 
-> `KV_ROUTES_ID` / `KV_HEALTH_KV_ID` 注入要求 `wrangler.toml` 里已有 `kv_namespaces` 块（见方式 D 步骤 1）
-
 ### 方式 D：手工（老步骤）
 
 ### 1. 创建并绑定 KV 命名空间
 
-本项目用两个 KV 命名空间：`ROUTES`（路由表 manifest）与 `HEALTH_KV`（上游健康状态）。
+只用一个 KV 命名空间：key `manifest` 存路由表，key `health:*` / `snapshot` 存健康状态。
 
 CLI 创建（会打印 id）：
 
 ```bash
-wrangler kv namespace create ROUTES     # 记下返回的 id
-wrangler kv namespace create HEALTH_KV  # 记下返回的 id
+wrangler kv namespace create KV
 ```
 
-或 Cloudflare 面板：**Workers & Pages → KV → Create namespace**，填入标题 `ROUTES` / `HEALTH_KV`，创建后点进命名空间复制其 ID。
+或 Cloudflare 面板：**Workers & Pages → KV → Create namespace**，填入标题 `KV`，创建后点进命名空间复制其 ID。
 
-然后把 id 填进 `wrangler.toml`——在文件中加入（默认仓库不带该块，避免一键按钮自动建 KV）：
+然后把 id 填进 `wrangler.toml` 的 `kv_namespaces`：
 
 ```toml
 kv_namespaces = [
-  { binding = "ROUTES",   id = "上一步的 ROUTES id" },
-  { binding = "HEALTH_KV", id = "上一步的 HEALTH_KV id" },
+  { binding = "KV", id = "上一步的 id" },
 ]
 ```
 
-或在 Cloudflare 面板绑定：**Workers → 你的 Worker → Settings → Variables → KV namespace bindings**（Add binding → 选 `ROUTES` / `HEALTH_KV` 命名空间）。
+或 Cloudflare 面板绑定：**Workers → 你的 Worker → Settings → Variables → KV namespace bindings**（Add binding → 选 `KV` 命名空间；按钮部署则是 Pages → Settings → Bindings）。
 
 > KV 是可选增强：不绑定则用内置默认路由表（GitHub/Steam/mod.io 直接可用），健康状态存进程内。
 
@@ -301,9 +295,9 @@ IPv4-only；已用 `range` 到 worker 的请求天然跳过 IP 池（`V4.test(ho
 Worker 配置了 `*/5` cron，每次触发：
 
 1. **探测**：对每个 route 的所有 hosts（跳过 `*.` 通配）与 `upstreams` 发送 HEAD 请求（405/501 自动降级为 GET）
-2. **降权**：连续失败达 `max_fails` 次的上游进入 `cooldown_s` 冷却（双写 isolate 内存 + HEALTH_KV，全区域共享）
+2. **降权**：连续失败达 `max_fails` 次的上游进入 `cooldown_s` 冷却（双写 isolate 内存 + KV，全区域共享）
 3. **候选排序**：请求时健康上游优先，冷却中的排到队尾
-4. 结果写入 `HEALTH_KV.snapshot`，30s 内缓存复用
+4. 结果写入 `KV` 的 key `snapshot`，30s 内缓存复用
 
 ---
 
