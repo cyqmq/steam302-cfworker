@@ -94,11 +94,13 @@ Fork 本仓库到自己的 GitHub，clone 到本地后按「方式 C/方式 D」
 
 ### 方式 B：一键按钮（Pages 精简版）
 
-上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署，功能受限：
+上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署。仓库 `wrangler.toml` **不声明
+`kv_namespaces`，按钮不会自动创建 KV**，因此：
 
 - ⚠️ Pages 不支持 `scheduled`（健康检查巡检/缓存预热 cron 不触发）
-- KV 命名空间需在部署后手动到 Pages → Settings → Bindings 补 `ROUTES`、`HEALTH_KV` 两个 KV 绑定
-- Analytics Engine 同理手动绑定
+- 默认以内置路由表运行（GitHub/Steam/mod.io），不需要 KV
+- 若要自定义路由表 / 健康状态持久化：部署后到 **Pages → Settings → Bindings** 手动添加
+  `ROUTES`、`HEALTH_KV` 两个 KV 绑定（命名空间先到 Workers & Pages → KV 创建，见方式 D）
 
 适合快速试水；要完整能力（cron/健康检查/stealth 全量）请用方式 A/C/D 部署到 Workers。
 
@@ -118,6 +120,8 @@ bash scripts/deploy.sh
 
 只做：注入 KV id（若给了）→ 可选 MANIFEST / 自定义域 → `wrangler deploy`。
 
+> `KV_ROUTES_ID` / `KV_HEALTH_KV_ID` 注入要求 `wrangler.toml` 里已有 `kv_namespaces` 块（见方式 D 步骤 1）
+
 ### 方式 D：手工（老步骤）
 
 ### 1. 创建并绑定 KV 命名空间
@@ -133,7 +137,7 @@ wrangler kv namespace create HEALTH_KV  # 记下返回的 id
 
 或 Cloudflare 面板：**Workers & Pages → KV → Create namespace**，填入标题 `ROUTES` / `HEALTH_KV`，创建后点进命名空间复制其 ID。
 
-然后把 id 填进 `wrangler.toml` 的 `kv_namespaces`（没有 id 值时用占位符会部署失败）：
+然后把 id 填进 `wrangler.toml`——在文件中加入（默认仓库不带该块，避免一键按钮自动建 KV）：
 
 ```toml
 kv_namespaces = [
@@ -142,7 +146,9 @@ kv_namespaces = [
 ]
 ```
 
-部署后也可在面板检查：**Workers → 你的 Worker → Settings → Variables → KV namespace bindings**。
+或在 Cloudflare 面板绑定：**Workers → 你的 Worker → Settings → Variables → KV namespace bindings**（Add binding → 选 `ROUTES` / `HEALTH_KV` 命名空间）。
+
+> KV 是可选增强：不绑定则用内置默认路由表（GitHub/Steam/mod.io 直接可用），健康状态存进程内。
 
 ### 2. 绑定自定义域名
 

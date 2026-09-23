@@ -9,13 +9,17 @@ routes = [
   # { pattern = "acc.example.com", zone_name = "example.com", custom_domain = true },
 ]
 
-# 注意：YAML 布局，务必补成你的真实 KV 命名空间 id：
+# KV 为可选增强：
+#   ROUTES    路由表 manifest（不装则用内置默认路由，30s 生效的 KV 覆盖能力失效）
+#   HEALTH_KV 上游健康状态持久化（不装则健康状态仅存于进程内，cron 后可能重置）
+# 需要时手动创建并绑定（防止一键按钮自动创建同名 KV 冲突）：
 #   wrangler kv namespace create ROUTES
 #   wrangler kv namespace create HEALTH_KV
-kv_namespaces = [
-  { binding = "ROUTES", id = "REPLACE_WITH_ROUTES_KV_ID" },
-  { binding = "HEALTH_KV", id = "REPLACE_WITH_HEALTH_KV_ID" },
-]
+# 然后在此块填写对应 id（或在 Cloudflare 面板 -> Worker -> Settings -> KV bindings）：
+# kv_namespaces = [
+#   { binding = "ROUTES", id = "..." },
+#   { binding = "HEALTH_KV", id = "..." },
+# ]
 
 [triggers]
 crons = ["*/5 * * * *"]
