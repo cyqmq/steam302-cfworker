@@ -81,31 +81,26 @@ steam302-cfworker/
 
 ## 部署
 
-### 方式 A：Fork + GitHub Actions 自动部署（推荐，全功能）
+### 方式 A：Fork 后手动部署（说明）
 
-Fork 本仓库后只需配 2 个 Secrets，push/手动触发即自动完成：创建/复用 KV → 注入 `wrangler.toml` → `wrangler deploy`。
+Fork 本仓库到自己的 GitHub，clone 到本地后按「方式 C/方式 D」执行即可。仓库内不含任何 CI
+配置，部署动作全部由你自己掌握：
 
-1. Fork 到自己的 GitHub（Actions 在 Fork 里默认开启）
-2. 仓库 **Settings → Secrets and variables → Actions** 添加：
-
-   | Secret | 说明 |
-   |--------|------|
-   | `CLOUDFLARE_API_TOKEN` | Token 需权限：`Workers Scripts: Edit`、`Account Settings: Read`、`Workers KV Storage: Edit` |
-   | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID（Dashboard 右侧栏） |
-
-3. 可选 Secrets：`KV_PREFIX`（KV 命名空间名前缀，默认 `steam302-cfworker`）、`MANIFEST`（自定义路由表 JSON，自动写入 KV）、`CF_DOMAIN`（自动绑定自定义域）
-4. push 到 `main` 或 Actions → **Deploy → Run workflow**
-5. 部署完成后到 Cloudflare 面板给 Worker 加自定义域（`workers.dev` 大陆被墙）
+1. Fork → clone
+2. 准备 Cloudflare 凭据：`CLOUDFLARE_API_TOKEN`（Token 需 `Workers Scripts: Edit`、
+   `Workers KV Storage: Edit` 权限）与 `CLOUDFLARE_ACCOUNT_ID`（Dashboard 右侧栏）
+3. 跑「方式 C」脚本或按「方式 D」手工步骤
+4. 部署完成后到 Cloudflare 面板给 Worker 加自定义域（`workers.dev` 大陆被墙）
 
 ### 方式 B：一键按钮（Pages 精简版）
 
 上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署，功能受限：
 
 - ⚠️ Pages 不支持 `scheduled`（健康检查巡检/缓存预热 cron 不触发）
-- KV 命名空间需在部署后手动到 Pages → Settings → Bindings 补 `ROUTES`、`HEALTH_KV` 两个 KV 绑定（或改 fork 方式用 Actions）
+- KV 命名空间需在部署后手动到 Pages → Settings → Bindings 补 `ROUTES`、`HEALTH_KV` 两个 KV 绑定
 - Analytics Engine 同理手动绑定
 
-适合快速试水；要完整能力请用方式 A。
+适合快速试水；要完整能力（cron/健康检查/stealth 全量）请用方式 A/C/D 部署到 Workers。
 
 ### 方式 C：本地一键脚本
 
