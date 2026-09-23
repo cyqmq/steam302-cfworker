@@ -2,6 +2,8 @@
 
 基于 [steam302-worker](https://github.com/cyqmq/steam302-worker) 精简重构的 Cloudflare Worker 加速项目。**无需任何 Fallback 节点**，Worker 独立完成 GitHub 全站加速与 Steam 部分资源加速，通过 same-host 模式直连源站。
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cyqmq/steam302-cfworker)
+
 ---
 
 ## 目录
@@ -78,6 +80,46 @@ steam302-cfworker/
 ---
 
 ## 部署
+
+### 方式 A：Fork + GitHub Actions 自动部署（推荐，全功能）
+
+Fork 本仓库后只需配 2 个 Secrets，push/手动触发即自动完成：创建/复用 KV → 注入 `wrangler.toml` → `wrangler deploy`。
+
+1. Fork 到自己的 GitHub（Actions 在 Fork 里默认开启）
+2. 仓库 **Settings → Secrets and variables → Actions** 添加：
+
+   | Secret | 说明 |
+   |--------|------|
+   | `CLOUDFLARE_API_TOKEN` | Token 需权限：`Workers Scripts: Edit`、`Account Settings: Read`、`Workers KV Storage: Edit` |
+   | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账户 ID（Dashboard 右侧栏） |
+
+3. 可选 Secrets：`KV_PREFIX`（KV 命名空间名前缀，默认 `steam302-cfworker`）、`MANIFEST`（自定义路由表 JSON，自动写入 KV）、`CF_DOMAIN`（自动绑定自定义域）
+4. push 到 `main` 或 Actions → **Deploy → Run workflow**
+5. 部署完成后到 Cloudflare 面板给 Worker 加自定义域（`workers.dev` 大陆被墙）
+
+### 方式 B：一键按钮（Pages 精简版）
+
+上面的 Deploy 按钮会把仓库作为 Cloudflare **Pages** 部署，功能受限：
+
+- ⚠️ Pages 不支持 `scheduled`（健康检查巡检/缓存预热 cron 不触发）
+- KV 命名空间需在部署后手动到 Pages → Settings → Bindings 补 `ROUTES`、`HEALTH_KV` 两个 KV 绑定（或改 fork 方式用 Actions）
+- Analytics Engine 同理手动绑定
+
+适合快速试水；要完整能力请用方式 A。
+
+### 方式 C：本地一键脚本
+
+```bash
+export CLOUDFLARE_API_TOKEN=xxx
+export CLOUDFLARE_ACCOUNT_ID=xxx
+# 可选：export MANIFEST='{"version":1,"routes":[...]}'
+# 可选：export CF_DOMAIN=acc.example.com
+bash scripts/deploy.sh
+```
+
+自动创建/复用 KV、写入 `wrangler.toml`、部署。
+
+### 方式 D：手工（老步骤）
 
 ### 1. 创建 KV 命名空间
 
@@ -246,6 +288,12 @@ Worker 配置了 `*/5` cron，每次触发：
 ---
 
 ## scripts 脚本
+
+### 一键部署
+
+```bash
+bash scripts/deploy.sh   # 需 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，详见「部署·方式 C」
+```
 
 ### 从 steam302-web 生成 manifest
 
