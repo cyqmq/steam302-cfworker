@@ -1,7 +1,36 @@
 import { DEFAULT_UA, hash } from "./util.js";
+import { getIpPool } from "./doh.js";
 
 const LOCAL = new Map();
 let snapshot = { ts: 0, value: null };
+let stealthMod;
+
+function getStealthMod() {
+  if (stealthMod === undefined) {
+    stealthMod = import("./stealth.js").catch(() => null);
+  }
+  return stealthMod;
+}
+
+async function probeIp(ip, sniHost, ua) {
+  const m = await getStealthMod();
+  if (!m || typeof m.stealthFetch !== "function" || !m.stealthSupported()) {
+    return null;
+  }
+  try {
+    const res = await m.stealthFetch("https://" + ip + "/", {
+      method: "HEAD",
+      headers: { "user-agent": ua, host: sniHost },
+      sni: sniHost,
+    });
+    try {
+      await res.body?.cancel?.();
+    } catch (_) {}
+    return res.status < 500 && res.status !== 429;
+  } catch (_) {
+    return false;
+  }
+}
 
 function kvKey(id, upstream) {
   return "health:" + id + ":" + hash(upstream);
@@ -125,8 +154,10 @@ export async function scheduledCheck(env, cfg) {
   const cooldownMs = (cfg.failover.cooldown_s || 45) * 1000;
   for (const r of cfg.routes || []) {
     const targets = new Set();
+    let poolHost = null;
     for (const host of r.hosts || []) {
       if (host.startsWith("*.")) continue;
+      if (!poolHost) poolHost = host;
       targets.add(
         r.mode === "same-host" ? "https://" + host : r.target || "https://" + host
       );
@@ -135,6 +166,15 @@ export async function scheduledCheck(env, cfg) {
     for (const up of targets) {
       const ok = await probe(up, r);
       if (!ok) failed[up] = { until: Date.now() + cooldownMs };
+    }
+    if (r.stealth && r.ip_pool !== false && poolHost) {
+      const ips = await getIpPool(poolHost);
+      for (const ip of ips.slice(0, 3)) {
+        const ok = await probeIp(ip, r.sni || poolHost, r.ua || DEFAULT_UA);
+        if (ok === false) {
+          failed["https://" + ip] = { until: Date.now() + cooldownMs };
+        }
+      }
     }
   }
   const value = { ts: Date.now(), failed };

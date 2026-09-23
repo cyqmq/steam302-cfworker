@@ -175,6 +175,21 @@ TLS 握手由 `src/stealth.js` 手动完成（`socket.startTls()`），`serverNa
 > ⚠️ SNI 能否稳定通过 Steam 的 Akamai 边缘校验（证书链域名必须匹配 SNI 且源站要接受），
 > 需部署后实网验证。代码已把控制权完全交给你，可搭配 `upstreams` 里的 IP 试验。
 
+#### DoH IP 池（stealth 路由可选）
+
+`stealth` 路由额外支持 **IP 池自动切换**（`"ip_pool": true`，默认开启）：
+
+1. 请求全部候选（主 hostname + `upstreams`）失败后，才触发兜底
+2. 用 `cloudflare-dns.com/dns-query`（DoH，`type=A`）实时解析当前主机名，取
+IPv4 记录中前 4 个，逐个用 `stealthFetch` 直连——SNI/Host 仍填真实域名
+3. 池结果按主机名缓存 5 分钟（进程内），失败对 DNS/源站零额外延迟
+4. 每个 IP 接入既有健康检查（`markFail` 冷却、`scheduled` 定时 `HEAD`，按
+`https://<IP>` 为 key 聚合），坏 IP 自动降权轮换
+
+关闭：`"ip_pool": false`。`scheduled` 巡检会对该路由**第一个非通配 host**
+的池 IP 做 stealth preflight（`stealthSupported()` 不满足时自动跳过探测）。
+IPv4-only；已用 `range` 到 worker 的请求天然跳过 IP 池（`V4.test(host)`）。
+
 #### Worker 底层限制（不可绕过，仅提示）
 
 | 限制 | 说明 |

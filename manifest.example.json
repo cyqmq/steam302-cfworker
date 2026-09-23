@@ -47,6 +47,7 @@
       "upstreams": [],
       "stealth": true,
       "sni": "steamcommunity.com",
+      "ip_pool": true,
       "cache": { "static_ms": 86400000 }
     },
     {

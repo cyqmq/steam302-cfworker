@@ -1,6 +1,7 @@
 import { DEFAULT_UA, isAssetHost, isHeavyHost } from "./util.js";
 import { readHealth, markFail, isDown, getSnapshot } from "./health.js";
 import { cachePolicy, cacheLookup, cacheStore } from "./cache.js";
+import { getIpPool } from "./doh.js";
 
 let stealthPromise;
 function getStealth() {
@@ -176,6 +177,7 @@ export async function proxyRequest(request, cfg, route, host, env, ctx) {
   const list = cands.map((c) => ({ url: c.url + tail, host: c.host, sni: c.sni }));
 
   const result = { status: 502, upstream: "", ok: false };
+  const keyOf = (u) => new URL(u).origin;
 
   const lookupUrl = list[0] && list[0].url;
   if (lookupUrl) {
@@ -196,26 +198,25 @@ export async function proxyRequest(request, cfg, route, host, env, ctx) {
   const snap = await getSnapshot(env);
   const down = new Set();
   for (const up of list) {
-    const kv = snap?.failed?.[up.url];
-    if (kv && Date.now() < (kv.until || 0)) down.add(up.url);
-    const h = await readHealth(env, route.id, up.url);
-    if (isDown(h)) down.add(up.url);
+    const k = keyOf(up.url);
+    const kv = snap?.failed?.[k];
+    if (kv && Date.now() < (kv.until || 0)) down.add(k);
+    const h = await readHealth(env, route.id, k);
+    if (isDown(h)) down.add(k);
   }
   const ordered = [
-    ...list.filter((c) => !down.has(c.url)),
-    ...list.filter((c) => down.has(c.url)),
+    ...list.filter((c) => !down.has(keyOf(c.url))),
+    ...list.filter((c) => down.has(keyOf(c.url))),
   ];
 
   let last = 502;
-  for (const up of ordered) {
-    const stealth =
-      !!route.stealth && !isHeavyHost(new URL(up.url).hostname);
+  async function tryCandidate(up, stealth) {
     try {
       const res = await attemptFetch(request, up.url, route, up.host, cfg, stealth, up.sni);
       result.upstream = up.url;
       if (res.status >= 500 || res.status === 429) {
-        last = await failAndReport(env, route, up.url, cfg, res.status);
-        continue;
+        last = await failAndReport(env, route, keyOf(up.url), cfg, res.status);
+        return null;
       }
       if (res.status < 300 && request.method === "GET") {
         const policy = cachePolicy(route, new URL(up.url), request.method, request.headers);
@@ -223,13 +224,39 @@ export async function proxyRequest(request, cfg, route, host, env, ctx) {
       }
       result.status = res.status;
       result.ok = res.status < 400;
-      const out = redirectChain(res, request, cfg, route, up.url, env, 0);
-      emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
-      return out;
+      return redirectChain(res, request, cfg, route, up.url, env, 0);
     } catch (_) {
-      last = await failAndReport(env, route, up.url, cfg, 502);
+      last = await failAndReport(env, route, keyOf(up.url), cfg, 502);
+      return null;
     }
   }
+
+  for (const up of ordered) {
+    const stealth =
+      !!route.stealth && !isHeavyHost(new URL(up.url).hostname);
+    const out = await tryCandidate(up, stealth);
+    if (out) {
+      emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
+      return out;
+    }
+  }
+
+  if (route.stealth && route.ip_pool !== false) {
+    const ips = await getIpPool(host);
+    for (const ip of ips.slice(0, 4)) {
+      const ipCand = {
+        url: "https://" + ip + tail,
+        host,
+        sni: route.sni || host,
+      };
+      const out = await tryCandidate(ipCand, true);
+      if (out) {
+        emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
+        return out;
+      }
+    }
+  }
+
   result.status = last >= 500 ? last : 502;
   emitAnalytics(env, ctx, { route: route.id, host, ...result, ms: Date.now() - t0 });
   return err(result.status, "all upstreams unreachable");
