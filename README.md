@@ -104,26 +104,45 @@ Fork 本仓库到自己的 GitHub，clone 到本地后按「方式 C/方式 D」
 
 ### 方式 C：本地一键脚本
 
+**先手动创建并绑定 KV**（见「方式 D」步骤 1，脚本不会自动创建），然后：
+
 ```bash
 export CLOUDFLARE_API_TOKEN=xxx
 export CLOUDFLARE_ACCOUNT_ID=xxx
+# 可选：export KV_ROUTES_ID=<ROUTES 命名空间 id>   （wrangler.toml 已填好则不用）
+# 可选：export KV_HEALTH_KV_ID=<HEALTH_KV 命名空间 id>
 # 可选：export MANIFEST='{"version":1,"routes":[...]}'
 # 可选：export CF_DOMAIN=acc.example.com
 bash scripts/deploy.sh
 ```
 
-自动创建/复用 KV、写入 `wrangler.toml`、部署。
+只做：注入 KV id（若给了）→ 可选 MANIFEST / 自定义域 → `wrangler deploy`。
 
 ### 方式 D：手工（老步骤）
 
-### 1. 创建 KV 命名空间
+### 1. 创建并绑定 KV 命名空间
+
+本项目用两个 KV 命名空间：`ROUTES`（路由表 manifest）与 `HEALTH_KV`（上游健康状态）。
+
+CLI 创建（会打印 id）：
 
 ```bash
-wrangler kv namespace create ROUTES
-wrangler kv namespace create HEALTH_KV
+wrangler kv namespace create ROUTES     # 记下返回的 id
+wrangler kv namespace create HEALTH_KV  # 记下返回的 id
 ```
 
-将返回的 ID 填入 `wrangler.toml` 的 `kv_namespaces`。
+或 Cloudflare 面板：**Workers & Pages → KV → Create namespace**，填入标题 `ROUTES` / `HEALTH_KV`，创建后点进命名空间复制其 ID。
+
+然后把 id 填进 `wrangler.toml` 的 `kv_namespaces`（没有 id 值时用占位符会部署失败）：
+
+```toml
+kv_namespaces = [
+  { binding = "ROUTES",   id = "上一步的 ROUTES id" },
+  { binding = "HEALTH_KV", id = "上一步的 HEALTH_KV id" },
+]
+```
+
+部署后也可在面板检查：**Workers → 你的 Worker → Settings → Variables → KV namespace bindings**。
 
 ### 2. 绑定自定义域名
 

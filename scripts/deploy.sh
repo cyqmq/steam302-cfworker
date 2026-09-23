@@ -1,41 +1,43 @@
 #!/usr/bin/env bash
-# 一键部署本地 Worker：
-#   1. 创建/复用 KV 命名空间（ROUTES / HEALTH_KV）并写入 wrangler.toml
+# 一键部署本地 Worker（需先手动创建并绑定 KV，见 README「部署·方式 D」）：
+#   1. 可选：用 KV_ROUTES_ID / KV_HEALTH_KV_ID 覆盖 wrangler.toml 中的 KV id
 #   2. 可选：推送 MANIFEST 到 ROUTES KV
 #   3. 可选：绑定自定义域（CF_DOMAIN=demo.example.com）
 #   4. wrangler deploy
 #
 # 需要的环境变量：
-#   CLOUDFLARE_API_TOKEN  必填（Worker 脚本 + KV 权限）
-#   CLOUDFLARE_ACCOUNT_ID 必填
-#   可选  KV_PREFIX  KV 命名空间名前缀（默认 steam302-cfworker）
-#   可选  MANIFEST   路由表 JSON（写入 ROUTES KV，覆盖内置默认）
-#   可选  CF_DOMAIN   自定义域名（须已托管在该 Cloudflare 账号）
+#   CLOUDFLARE_API_TOKEN    必填（Worker 脚本 + KV 权限）
+#   CLOUDFLARE_ACCOUNT_ID   必填
+#   可选  KV_ROUTES_ID      已有 ROUTES 命名空间的 id（若 wrangler.toml 已填好则无需设置）
+#   可选  KV_HEALTH_KV_ID   已有 HEALTH_KV 命名空间的 id
+#   可选  MANIFEST          路由表 JSON（写入 ROUTES KV，覆盖内置默认）
+#   可选  CF_DOMAIN         自定义域名（须已托管在该 Cloudflare 账号）
+#
+# 注意：本脚本不会自动创建 KV 命名空间——请用
+#   wrangler kv namespace create ROUTES / HEALTH_KV
+# 把返回的 id 填进 wrangler.toml 的 kv_namespaces（或通过 KV_ROUTES_ID/KV_HEALTH_KV_ID 注入）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 : "${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN 环境变量}"
 : "${CLOUDFLARE_ACCOUNT_ID:?set CLOUDFLARE_ACCOUNT_ID 环境变量}"
 
-PREFIX="${KV_PREFIX:-steam302-cfworker}"
-
 for B in ROUTES HEALTH_KV; do
-  N="${PREFIX}-${B,,}"
-  ID="$(wrangler kv namespace list | jq -r --arg n "$N" '.[]|select(.title==$n)|.id' | head -n1 || true)"
-  if [ -z "$ID" ] || [ "$ID" = "null" ]; then
-    echo "[deploy] creating kv namespace $N"
-    ID="$(wrangler kv namespace create "$N" | jq -r '.id')"
+  ID_VAR="KV_${B}_ID"
+  ID="${!ID_VAR:-}"
+  if [ -n "$ID" ]; then
+    echo "[deploy] KV $B -> id $ID"
+    sed -i -E "s/(\"$B\",[[:space:]]*id = \")[^\"]*/\1$ID/" wrangler.toml
   fi
-  [ -n "$ID" ] && [ "$ID" != "null" ] || { echo "[deploy] error: cannot obtain id for $N" >&2; exit 1; }
-  echo "[deploy] KV $B -> $N ($ID)"
-  sed -i -E "s/(\"$B\",[[:space:]]*id = \")[^\"]*/\1$ID/" wrangler.toml
 done
 
 if [ -n "${MANIFEST:-}" ]; then
   ID="$(sed -n 's/.*binding = "ROUTES", id = "\([^"]*\)".*/\1/p' wrangler.toml | head -n1)"
-  if [ -n "$ID" ]; then
+  if [ -n "$ID" ] && [ "$ID" != "REPLACE_WITH_ROUTES_KV_ID" ]; then
     echo "[deploy] writing MANIFEST to ROUTES KV"
     printf '%s' "$MANIFEST" | wrangler kv key put manifest --namespace-id "$ID" --path -
+  else
+    echo "[deploy] skip MANIFEST: ROUTES KV id 未配置"
   fi
 fi
 
